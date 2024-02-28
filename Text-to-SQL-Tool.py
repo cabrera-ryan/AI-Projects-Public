@@ -49,6 +49,21 @@ def get_user_query(prompt):
         else:
             print("Please enter 'Yes' or 'No'.")
 
+# Define function to search for phrases that might indicate no data available or query cannot be generated
+def check_for_no_data(response_text):
+    # 
+    indicators_of_no_data = [
+        "unfortunately",
+        "not available",
+        "cannot generate",
+        "no relevant data",
+        "sorry"
+    ]
+    for phrase in indicators_of_no_data:
+        if phrase in response_text.lower():  # Case insensitive check
+            return True
+    return False
+
 
 # Main loop for asking and running queries
 while True:
@@ -63,24 +78,30 @@ while True:
                 "role": "system",
                 "content": "You will be asked for help writing SQL queries against public datasets in GCP BigQuery. "
                             "You will be provided with the DDL for multiple tables to help generate queries. "
-                            "Do not generate any queries until asked."
-                            " When asked to generate a query, at the top of each query add --QUERY_START, and at the bottom of the query, add --QUERY_END."
+                            "Do not generate any queries until asked. "
+                            "When asked to generate a query, at the top of each query add --QUERY_START, and at the bottom of the query, add --QUERY_END. "
+                            "If it is not possible to generate a query for the user using the available data, tell them so. Do not attempt to create a query. Make sure to use the word unfortunately."
             },
             {"role": "user", "content": "Here is the DDL: " + ddl_string},
-            {"role": "user", "content": user_question},
+            {"role": "user", "content": "Here is the user question: " + user_question},
         ]
     )
 
-    # Show user the SQL query ChatGPT has generated
-    query_sql = str(follow_up_response.choices[0].message.content)
-    print(query_sql)
+    query_response_text = str(follow_up_response.choices[0].message.content)
 
-    # Ask user if they want to run the SQL query
+    # Check if ChatGPT was unable to create a query. If so, skip the rest of the loop and ask for another question.
+    if check_for_no_data(query_response_text):
+        print("Unfortunately, data is not available for that question. Please try a different question.")
+        continue  # Skip the rest of the loop and ask for a new question
+
+    # If data is available, proceed with asking if they want to run the query.
+    print(query_response_text)
     ask_user_run_query = get_user_query("Would you like to run this query? (Yes/No) ")
+    
 
     if ask_user_run_query == 'yes':
         print("Running Query...")
-        user_query_job = bq_client.query(query_sql)
+        user_query_job = bq_client.query(query_response_text)
         user_query_df = user_query_job.to_dataframe()
         print("Here are the results:")
         print(user_query_df)
@@ -92,7 +113,6 @@ while True:
     if run_another_query == 'no':
         print("Ending the application.")
         break
-
 
 
 
